@@ -14,6 +14,7 @@ if (isset($_GET['del'])) {
 // Arquivos requeridos
 require_once('config.php');
 require_once('functions.php');
+require_once('database.php');
 
 // Variaveis de Controle
 $num = 1; // Contador de Linha
@@ -59,9 +60,9 @@ function carrega_dados($tabela_nome) {
 	$arq_dados = file($sigtap_dir.$tabela_nome.'.txt');
 	$insert_sql = chr(9).'INSERT INTO '.$tabela_nome.' VALUES'.chr(10);
 	$count_lin = 1;
-	$count_col = 1;
 	foreach( $arq_dados as $linha ) {
 		$insert_sql.= chr(9).'('.chr(10);
+		$count_col = 1;
 		foreach( $lay_linha as $coluna ) {
 			$insert_sql.= chr(9).mysql_col_types($linha, $coluna);
 			if ( $count_col < count($lay_linha) ) $insert_sql.=', ';
