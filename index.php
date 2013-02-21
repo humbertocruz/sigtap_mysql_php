@@ -36,21 +36,20 @@ $layout = file($sigtap_dir.'layout.txt');
 
 // Leitura da linha do nome da tabela
 function ler_tabela($tabela = '') {
-	return(chr(10).chr(9).'CREATE TABLE IF NOT EXISTS '.$tabela.' ('.chr(10));
+	return('CREATE TABLE IF NOT EXISTS '.$tabela.' (');
 }
 
 // Leitura da linha de informação dos dados
 function ler_dados($dados) {
-	//echo 'Dados: '.$dados.EOL;
+	
 }
 
 // Leitura da linha das colunas
 function ler_campo($campo,$last = false) {
 	global $tabelas, $tabela_nome;
 	list($coluna,$tamanho,$inicio,$fim,$tipo) = $campo;
-	$ret = chr(9).strtolower( $coluna ).' '.mysql_types($coluna,$tipo,$tamanho);
+	$ret = strtolower( $coluna ).' '.mysql_types($coluna,$tipo,$tamanho);
 	if (!$last) $ret.= ', ';
-	$ret.= chr(10);
 	return ( $ret );
 }
 
@@ -58,24 +57,25 @@ function carrega_dados($tabela_nome) {
 	global $tabelas, $sigtap_dir;
 	$lay_linha = $tabelas[$tabela_nome]['campos'];
 	$arq_dados = file($sigtap_dir.$tabela_nome.'.txt');
-	$insert_sql = chr(9).'INSERT INTO '.$tabela_nome.' VALUES'.chr(10);
+	$insert_sql_ar = array();
+	$insert_sql = '';
 	$count_lin = 1;
 	foreach( $arq_dados as $linha ) {
-		$insert_sql.= chr(9).'('.chr(10);
+		$insert_sql.= 'INSERT INTO '.$tabela_nome.' VALUES ';
+		$insert_sql.= ' ( ';
 		$count_col = 1;
 		foreach( $lay_linha as $coluna ) {
-			$insert_sql.= chr(9).mysql_col_types($linha, $coluna);
+			$insert_sql.= mysql_col_types($linha, $coluna);
 			if ( $count_col < count($lay_linha) ) $insert_sql.=', ';
-			$insert_sql.= chr(10);
 			$count_col++;
 		}
-		$insert_sql.= chr(9).')';
-		if ( $count_lin < count($arq_dados) ) $insert_sql.=',';
-		$insert_sql.= chr(10);
+		$insert_sql.= ' ); ';
+		array_push( $insert_sql_ar, $insert_sql );
+		$insert_sql = '';
 		$count_lin++;
 		$count_col = 0;
 	}
-	return($insert_sql);
+	return($insert_sql_ar);
 }
 
 // Inicia processamento
@@ -92,23 +92,10 @@ if ( !is_array( $tabelas ) ) {
 		
 		// Se a linha estiver em branco ( Próxima tabela )
 		if ($linha == '') {
-			// Adiciona ultimo campo
-			//$tabela_sql.= chr(9).')'.chr(10);
-			// Adiciona tipo de tabela
-			//$tabela_sql.= chr(9).' TYPE=innodb;'.chr(10);
-	
-			//$tabelas[$tabela_nome]['sql'] = $tabela_sql;
-			
-			// Carrega arquivo de dados
-			// $tabelas[$tabela_nome]['dados'] = carrega_dados($sigtap_dir.$tabela_nome.'.txt');
-			
-			// Reinicia Texto SQL
-			//$tabela_sql = '';
 			// Reinicia o tipo de Linha
 			$tipo = 0;
-			
+	
 			// Para a execução e começa a próxima linha
-			// break;
 			continue;
 		}
 	
@@ -137,16 +124,16 @@ if ( !is_array( $tabelas ) ) {
 	}
 
 	foreach($tabelas as $key=>$value) {
-		$sql_insert = chr(10).chr(9).'CREATE TABLE IF NOT EXISTS '.$key.' ('.chr(10);
+		$sql_insert = 'CREATE TABLE IF NOT EXISTS '.$key.' (';
 		$num_campos = count($tabelas[$key]['campos']);
 		foreach ($tabelas[$key]['campos'] as $camp) {
 			$num_campos--;
 			if ($num_campos == 0) $last = true; else $last = false;
 			$sql_insert.= ler_campo($camp, $last);
 		}
-		$sql_insert.= chr(9).')'.chr(10);
-		$sql_insert.= chr(9).' TYPE=innodb;'.chr(10);
-		$tabelas[$key]['sql'] = $sql_insert;
+		$sql_insert.= ')';
+		$sql_insert.= ' TYPE=innodb; ';
+		$tabelas[$key]['sql'] = trim($sql_insert);
 	}
 	$_SESSION['tabelas'] = $tabelas;
 	$processadas = array();
@@ -160,10 +147,36 @@ if ( !is_array( $tabelas ) ) {
 		$processadas = array_merge($processadas, $_POST['tabela']);
 		$_SESSION['processadas'] = $processadas;
 		$sql_create = '';
-		$sql_insert = '';
 		foreach($_POST['tabela'] as $tabela_proc) {
-			$sql_create.= $tabelas[$tabela_proc]['sql'].EOL;
-			$sql_insert.= carrega_dados($tabela_proc).EOL;
+			$sql_create.= $tabelas[$tabela_proc]['sql'];
+			$sql_insert = carrega_dados( $tabela_proc );
+			@$link = mysql_connect($database['host'], $database['user'], $database['pass']);
+			if ( !$link ) {
+				$mysql_msg = 'Não foi possível conectar. '.mysql_error();
+			} else {
+				@$db = mysql_select_db( $database['dbase'] );
+
+				if (!$db) {
+					$mysql_msg = 'Banco de Dados não encontrado.';
+				} else {
+					@$qc = mysql_query( $sql_create );
+					if (!$qc) {
+						$mysql_msg = 'Houve um erro na criação da tabela. '.mysql_error();
+					} else {
+						foreach($sql_insert as $sql_in) {
+							@$qi = mysql_query( utf8_decode( $sql_in ) );
+							if (!$qi) {
+								$mysql_msg = 'Houve ao inserir dados na tabela. '.mysql_error();
+								break;
+							}
+						}
+					}
+					
+				}
+			
+				mysql_close( $link );
+			}
+			
 		}
 	}
 }
@@ -182,12 +195,14 @@ if ( !is_array( $tabelas ) ) {
 	</head>
 	<body>
 			<div class="container">
+				<?php //pr($tabelas); ?>
 				<div class="alert alert-info">
-					<?php echo $status_exec; ?>
+					<?php echo $status_exec; ?><br>
+					<?php echo (isset($mysql_msg))?($mysql_msg):(''); ?>
 				</div>
 				<?php if($_POST['tabela']) { ?>
-					<pre class="pre-scrollable"><?php echo($sql_create); ?></pre>
-					<pre class="pre-scrollable"><?php echo($sql_insert); ?></pre>
+					<pre class="pre-scrollable"><?php echo($sql_create).EOL; ?></pre>
+					<pre class="pre-scrollable"><?php pr($sql_insert); ?></pre>
 				<?php } ?>
 				<br>
 				<form method="post">
