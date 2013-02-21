@@ -1,0 +1,12 @@
+<?php
+
+/* Configuração do Banco de dados
+*
+*/
+$database = array(
+	'host' => '',
+	'user' => '',
+	'pass' => '',
+	'dbase' => ''
+);
+
